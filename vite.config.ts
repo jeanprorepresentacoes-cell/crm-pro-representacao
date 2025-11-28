@@ -1,18 +1,27 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'path' // Importe o módulo 'path' do Node.js
+import path from 'path'
 
-// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react( )],
+  // Diz à Vite que a raiz do nosso projeto frontend é a pasta 'client'
+  root: 'client', 
+  
+  plugins: [react()],
+  
   resolve: {
     alias: {
-      // Adiciona o atalho para a pasta 'src' (comum em muitos projetos)
-      '@': path.resolve(__dirname, './src'),
-      // Adiciona o atalho para a pasta 'shared' (a causa do nosso erro)
-      '@shared': path.resolve(__dirname, '../shared'),
+      // Agora que a raiz é 'client', o atalho '@' aponta para 'client/src'
+      '@': path.resolve(__dirname, './client/src'),
+      // E o atalho '@shared' aponta para a pasta 'shared' que está um nível acima
+      '@shared': path.resolve(__dirname, './shared'),
     },
   },
+
+  build: {
+    // Diz à Vite para colocar o resultado final na pasta 'dist' na raiz do projeto
+    outDir: '../dist',
+  },
+
   server: {
     proxy: {
       '/api': {
