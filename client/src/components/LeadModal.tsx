@@ -88,7 +88,8 @@ export default function LeadModal({ open, onOpenChange, lead, onSuccess }: LeadM
         });
         toast.success("Lead atualizado com sucesso!");
       } else {
-        await createLeadMutation.mutateAsync(formData);
+        // LINHA CORRIGIDA ABAIXO
+        await createLeadMutation.mutateAsync({ data: formData });
         toast.success("Lead criado com sucesso!");
       }
       onOpenChange(false);
