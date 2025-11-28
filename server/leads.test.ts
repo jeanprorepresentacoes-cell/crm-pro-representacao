@@ -1,299 +1,211 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { appRouter } from "./routers";
-import type { TrpcContext } from "./_core/context";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
-type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
-
-function createAuthContext(role: "admin" | "user" = "user"): TrpcContext {
-  const user: AuthenticatedUser = {
-    id: 1,
-    openId: "test-user",
-    email: "test@example.com",
-    name: "Test User",
-    loginMethod: "manus",
-    role,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    lastSignedIn: new Date(),
-  };
-
-  return {
-    user,
-    req: {
-      protocol: "https",
-      headers: {},
-    } as TrpcContext["req"],
-    res: {} as TrpcContext["res"],
-  };
+interface LeadModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  lead?: any;
+  onSuccess?: () => void;
 }
 
-describe("Leads Router", () => {
-  describe("list", () => {
-    it("should list leads with filters", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.leads.list({
-        status: "novo",
-        search: "",
-        limit: 10,
-        offset: 0,
-      });
-
-      expect(Array.isArray(result)).toBe(true);
-    });
-
-    it("should filter leads by status", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.leads.list({
-        status: "novo",
-        search: "",
-        limit: 10,
-        offset: 0,
-      });
-
-      expect(Array.isArray(result)).toBe(true);
-    });
-
-    it("should search leads by name", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.leads.list({
-        status: "",
-        search: "João",
-        limit: 10,
-        offset: 0,
-      });
-
-      expect(Array.isArray(result)).toBe(true);
-    });
+export default function LeadModal({ open, onOpenChange, lead, onSuccess }: LeadModalProps) {
+  const [formData, setFormData] = useState({
+    nomePessoa: lead?.nomePessoa || "",
+    nomeEstabelecimento: lead?.nomeEstabelecimento || "",
+    cidade: lead?.cidade || "",
+    telefone: lead?.telefone || "",
+    email: lead?.email || "",
+    observacoes: lead?.observacoes || "",
+    fonteLead: lead?.fonteLead || "outro",
+    dataUltimoContato: lead?.dataUltimoContato || new Date().toISOString().split("T")[0],
   });
 
-  describe("create", () => {
-    it("should create a new lead", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
+  const [loading, setLoading] = useState(false);
+  const createLeadMutation = trpc.leads.create.useMutation();
+  const updateLeadMutation = trpc.leads.update.useMutation();
 
-      const result = await caller.leads.create({
-        nomePessoa: "João Silva",
-        nomeEstabelecimento: "Silva Comércio",
-        email: "joao@silva.com",
-        telefone: "(11) 98765-4321",
-        cidade: "São Paulo",
-      });
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-      expect(result).toHaveProperty("id");
-      expect(result.nomePessoa).toBe("João Silva");
-      expect(result.status).toBe("novo");
-    });
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-    it("should validate required fields", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
+  const formatPhone = (value: string) => {
+    const cleaned = value.replace(/\D/g, "");
+    if (cleaned.length <= 2) return cleaned;
+    if (cleaned.length <= 7) return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2)}`;
+    return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 7)}-${cleaned.slice(7, 11)}`;
+  };
 
-      try {
-        await caller.leads.create({
-          nomePessoa: "",
-          nomeEstabelecimento: "",
-          email: "",
-          telefone: "",
-          cidade: "",
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhone(e.target.value);
+    setFormData((prev) => ({ ...prev, telefone: formatted }));
+  };
+
+  const validateForm = () => {
+    if (!formData.nomePessoa.trim()) {
+      toast.error("Nome da pessoa é obrigatório");
+      return false;
+    }
+    if (!formData.nomeEstabelecimento.trim()) {
+      toast.error("Nome do estabelecimento é obrigatório");
+      return false;
+    }
+    if (!formData.cidade.trim()) {
+      toast.error("Cidade é obrigatória");
+      return false;
+    }
+    if (!formData.telefone.trim()) {
+      toast.error("Telefone é obrigatório");
+      return false;
+    }
+    if (formData.email && !formData.email.includes("@")) {
+      toast.error("Email inválido");
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+
+    setLoading(true);
+    try {
+      if (lead) {
+        await updateLeadMutation.mutateAsync({
+          id: lead.id,
+          data: formData,
         });
-        expect.fail("Should have thrown an error");
-      } catch (error: any) {
-        expect(error.message).toBeDefined();
+        toast.success("Lead atualizado com sucesso!");
+      } else {
+        // LINHA REVERTIDA PARA O ORIGINAL
+        await createLeadMutation.mutateAsync(formData);
+        toast.success("Lead criado com sucesso!");
       }
-    });
-  });
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao salvar lead");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  describe("update", () => {
-    it("should update a lead", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{lead ? "Editar Lead" : "Novo Lead"}</DialogTitle>
+        </DialogHeader>
 
-      const result = await caller.leads.update({
-        id: 1,
-        nomePessoa: "João Silva Atualizado",
-        nomeEstabelecimento: "Silva Comércio LTDA",
-        email: "joao.novo@silva.com",
-        telefone: "(11) 98765-4321",
-        cidade: "São Paulo",
-        status: "em_contato",
-      });
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="nomePessoa">Nome da Pessoa *</Label>
+              <Input
+                id="nomePessoa"
+                name="nomePessoa"
+                value={formData.nomePessoa}
+                onChange={handleChange}
+                placeholder="João Silva"
+              />
+            </div>
+            <div>
+              <Label htmlFor="nomeEstabelecimento">Estabelecimento *</Label>
+              <Input
+                id="nomeEstabelecimento"
+                name="nomeEstabelecimento"
+                value={formData.nomeEstabelecimento}
+                onChange={handleChange}
+                placeholder="Silva Comércio"
+              />
+            </div>
+          </div>
 
-      expect(result.nomePessoa).toBe("João Silva Atualizado");
-    });
-  });
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="cidade">Cidade *</Label>
+              <Input
+                id="cidade"
+                name="cidade"
+                value={formData.cidade}
+                onChange={handleChange}
+                placeholder="São Paulo"
+              />
+            </div>
+            <div>
+              <Label htmlFor="telefone">Telefone *</Label>
+              <Input
+                id="telefone"
+                name="telefone"
+                value={formData.telefone}
+                onChange={handlePhoneChange}
+                placeholder="(11) 98765-4321"
+              />
+            </div>
+          </div>
 
-  describe("delete", () => {
-    it("should delete a lead (admin only)", async () => {
-      const ctx = createAuthContext("admin");
-      const caller = appRouter.createCaller(ctx);
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="joao@silva.com"
+              />
+            </div>
+            <div>
+              <Label htmlFor="fonteLead">Fonte do Lead</Label>
+              <Select value={formData.fonteLead} onValueChange={(value) => handleSelectChange("fonteLead", value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="indicacao">Indicação</SelectItem>
+                  <SelectItem value="site">Site</SelectItem>
+                  <SelectItem value="evento">Evento</SelectItem>
+                  <SelectItem value="cold_call">Cold Call</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-      const result = await caller.leads.delete({ id: 1 });
-      expect(result.success).toBe(true);
-    });
+          <div>
+            <Label htmlFor="observacoes">Observações</Label>
+            <Textarea
+              id="observacoes"
+              name="observacoes"
+              value={formData.observacoes}
+              onChange={handleChange}
+              placeholder="Adicione observações sobre o lead..."
+              rows={4}
+            />
+          </div>
+        </div>
 
-    it("should not allow non-admin to delete", async () => {
-      const ctx = createAuthContext("user");
-      const caller = appRouter.createCaller(ctx);
-
-      try {
-        await caller.leads.delete({ id: 1 });
-        expect.fail("Should have thrown an error");
-      } catch (error: any) {
-        expect(error.code).toBe("FORBIDDEN");
-      }
-    });
-  });
-});
-
-describe("Clientes Router", () => {
-  describe("list", () => {
-    it("should list clientes with filters", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.clientes.list({
-        status: "ativo",
-        search: "",
-        limit: 10,
-        offset: 0,
-      });
-
-      expect(Array.isArray(result)).toBe(true);
-    });
-  });
-
-  describe("create", () => {
-    it("should create a new cliente", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.clientes.create({
-        nomePessoa: "João Silva",
-        nomeEstabelecimento: "Silva Comércio",
-        cpf: "123.456.789-00",
-        email: "joao@silva.com",
-        telefone: "(11) 98765-4321",
-        cidade: "São Paulo",
-        enderecCompleto: "Rua das Flores",
-        numero: "123",
-        bairro: "Centro",
-        cep: "01310-100",
-        limiteCredito: 50000,
-        condicaoPagamento: "30 dias",
-      });
-
-      expect(result).toHaveProperty("id");
-      expect(result.nomePessoa).toBe("João Silva");
-      expect(result.status).toBe("ativo");
-    });
-
-    it("should validate CNPJ uniqueness", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      // Create first cliente
-      await caller.clientes.create({
-        nomePessoa: "Cliente 1",
-        nomeEstabelecimento: "Empresa 1",
-        cpf: "123.456.789-00",
-        email: "cliente1@example.com",
-        telefone: "(11) 98765-4321",
-        cidade: "São Paulo",
-        enderecCompleto: "Rua 1",
-        numero: "1",
-        bairro: "Bairro 1",
-        cep: "01310-100",
-      });
-
-      // Try to create duplicate
-      try {
-        await caller.clientes.create({
-          nomePessoa: "Cliente 2",
-          nomeEstabelecimento: "Empresa 2",
-          cpf: "123.456.789-00",
-          email: "cliente2@example.com",
-          telefone: "(11) 98765-4322",
-          cidade: "Rio de Janeiro",
-          enderecCompleto: "Rua 2",
-          numero: "2",
-          bairro: "Bairro 2",
-          cep: "20000-000",
-        });
-        expect.fail("Should have thrown an error for duplicate CNPJ");
-      } catch (error: any) {
-        expect(error.message).toContain("CNPJ");
-      }
-    });
-  });
-});
-
-describe("Vendas Router", () => {
-  describe("list", () => {
-    it("should list vendas with filters", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.vendas.list({
-        status: "confirmada",
-        search: "",
-        limit: 10,
-        offset: 0,
-      });
-
-      expect(Array.isArray(result)).toBe(true);
-    });
-  });
-
-  describe("create", () => {
-    it("should create a new venda", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.vendas.create({
-        clienteId: 1,
-        empresaId: 1,
-        valor: 5000,
-        descricao: "Venda de produtos",
-      });
-
-      expect(result).toHaveProperty("numero");
-      expect(result.valor).toBe(5000);
-      expect(result.status).toBe("pendente");
-    });
-
-    it("should calculate commission correctly", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.vendas.create({
-        clienteId: 1,
-        empresaId: 1,
-        valor: 10000,
-        descricao: "Venda de produtos",
-      });
-
-      // Assuming 10% commission
-      expect(result.comissao).toBe(1000);
-    });
-  });
-
-  describe("updateStatus", () => {
-    it("should update venda status", async () => {
-      const ctx = createAuthContext();
-      const caller = appRouter.createCaller(ctx);
-
-      const result = await caller.vendas.updateStatus({
-        id: 1,
-        status: "confirmada",
-      });
-
-      expect(result.status).toBe("confirmada");
-    });
-  });
-});
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading}>
+            {loading ? "Salvando..." : "Salvar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

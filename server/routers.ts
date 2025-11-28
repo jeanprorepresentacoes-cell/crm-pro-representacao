@@ -50,7 +50,7 @@ const leadSchema = z.object({
   email: z.string().email().optional(),
   observacoes: z.string().optional(),
   fonteLead: z.enum(["indicacao", "site", "evento", "cold_call", "outro"]).optional(),
-  dataUltimoContato: z.date().optional(),
+  dataUltimoContato: z.string().optional(), // <-- LINHA CORRIGIDA
   status: z.enum(["novo", "em_contato", "qualificado", "proposta_enviada", "perdido", "convertido"]).optional(),
 });
 
